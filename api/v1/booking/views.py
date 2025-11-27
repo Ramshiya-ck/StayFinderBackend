@@ -15,6 +15,7 @@ from django.http import HttpResponse, JsonResponse
 
 from api.v1.booking.serializers import *
 from booking.models import *
+from django.db.models import F
 
 
 from rest_framework.decorators import api_view, permission_classes
@@ -61,7 +62,7 @@ def booking_list(request, hotel_id=None, room_id=None):
         bookings = bookings.filter(room_id=room_id)
 
     bookings = bookings.filter(
-        advance_amount__gte=(0.3 * models.F("total_amount"))
+        advance_amount__gte=(0.3 * F("total_amount"))
     )
 
     serializer = BookingSerializer(bookings, many=True, context={"request": request})
@@ -371,7 +372,10 @@ def create_checkout_session(request):
 def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
-    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET  # ⚠️ Set in settings.py
+    endpoint_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)  # optional
+    if not endpoint_secret:
+        logger.error("STRIPE_WEBHOOK_SECRET is not configured")
+        return HttpResponse(status=500)
 
     try:
         event = stripe.Webhook.construct_event(

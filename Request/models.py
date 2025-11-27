@@ -21,5 +21,5 @@ class Request(models.Model):
         verbose_name_plural = 'Requests'
         ordering = ['-id']
     def __str__(self):
-        return f"Request #(self.id)-(self.hotel_name)-(self.status)"
+        return f"Request #{self.id} - {self.hotel_name}"
     

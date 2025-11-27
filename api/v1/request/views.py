@@ -51,7 +51,7 @@ def request_form(request):
 
 
 @api_view(['DELETE'])
-@permission_classes(IsAuthenticated)
+@permission_classes([IsAuthenticated])
 def request_delete(request,id):
     user = request.user
     instance = Request.objects.get(id=id)
@@ -61,7 +61,7 @@ def request_delete(request,id):
         "data":{},
         "message": "request deleted sucessfully"
     }
-    Response(response_data)
+    return Response(response_data)
     
 
 

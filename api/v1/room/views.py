@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 
 from api.v1.room.serializers import *
 from Room.models import *
+from Hotel.models import Hotal
 
 
 

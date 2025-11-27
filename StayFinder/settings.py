@@ -183,6 +183,7 @@ SIMPLE_JWT = {
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
 STRIPE_CURRENCY = os.environ.get("STRIPE_CURRENCY", "usd")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 # ---------------------------
 # SECURITY (Production only)
