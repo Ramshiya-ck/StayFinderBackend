@@ -1,51 +1,31 @@
-"""
-Management command to create a default superuser from environment variables.
-Safe for production deployment on Render.
-"""
 import os
-from django.core.management.base import BaseCommand
+from django.apps import apps
 from django.contrib.auth import get_user_model
 
-User = get_user_model()
+def create_superuser():
+    User = get_user_model()
 
+    email = "admin@gmail.com"
+    username = "admin"
+    password = "1234"
 
-class Command(BaseCommand):
-    help = 'Creates a superuser from DJANGO_SUPERUSER_EMAIL and DJANGO_SUPERUSER_PASSWORD environment variables'
+    if not User.objects.filter(email=email).exists():
+        User.objects.create_superuser(
+            email=email,
+            username=username,
+            password=password
+        )
+        print("Superuser created!")
+    else:
+        print("Superuser already exists!")
 
-    def handle(self, *args, **options):
-        email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
-        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+# Only run when apps are fully loaded
+if os.environ.get("CREATE_SUPERUSER") == "1":
+    def _run_create_superuser(sender, **kwargs):
+        create_superuser()
 
-        if not email or not password:
-            self.stdout.write(
-                self.style.WARNING(
-                    'DJANGO_SUPERUSER_EMAIL and DJANGO_SUPERUSER_PASSWORD not set. Skipping superuser creation.'
-                )
-            )
-            return
+    from django.apps import AppConfig, apps
+    from django.core.signals import request_finished
+    from django.db.models.signals import post_migrate
 
-        if User.objects.filter(email=email).exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f'User with email {email} already exists. Skipping superuser creation.'
-                )
-            )
-            return
-
-        try:
-            User.objects.create_superuser(
-                email=email,
-                password=password
-            )
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f'Successfully created superuser with email: {email}'
-                )
-            )
-        except Exception as e:
-            self.stdout.write(
-                self.style.ERROR(
-                    f'Error creating superuser: {str(e)}'
-                )
-            )
-
+    post_migrate.connect(_run_create_superuser)
