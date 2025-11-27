@@ -1,31 +1,19 @@
-import os
-from django.apps import apps
+from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
+import os
 
-def create_superuser():
-    User = get_user_model()
+class Command(BaseCommand):
+    help = "Creates a default superuser if not present."
 
-    email = "admin@gmail.com"
-    username = "admin"
-    password = "1234"
+    def handle(self, *args, **kwargs):
+        User = get_user_model()
 
-    if not User.objects.filter(email=email).exists():
-        User.objects.create_superuser(
-            email=email,
-            username=username,
-            password=password
-        )
-        print("Superuser created!")
-    else:
-        print("Superuser already exists!")
+        email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@gmail.com")
+        password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "1234")
 
-# Only run when apps are fully loaded
-if os.environ.get("CREATE_SUPERUSER") == "1":
-    def _run_create_superuser(sender, **kwargs):
-        create_superuser()
+        if User.objects.filter(email=email).exists():
+            self.stdout.write(self.style.WARNING(f"Superuser already exists: {email}"))
+            return
 
-    from django.apps import AppConfig, apps
-    from django.core.signals import request_finished
-    from django.db.models.signals import post_migrate
-
-    post_migrate.connect(_run_create_superuser)
+        User.objects.create_superuser(email=email, password=password)
+        self.stdout.write(self.style.SUCCESS(f"Superuser created: {email}"))

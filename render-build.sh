@@ -5,6 +5,7 @@ pip install -r requirements.txt
 python manage.py collectstatic --noinput
 python manage.py migrate --noinput
 
+# Optional superuser creation
 if [ "${RUN_SUPERUSER}" = "1" ]; then
-    python manage.py create_default_superuser || true
+  python manage.py create_default_superuser || true
 fi
