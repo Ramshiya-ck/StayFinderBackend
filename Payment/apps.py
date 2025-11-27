@@ -7,7 +7,8 @@ class PaymentConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'Payment'
 
-
     def ready(self):
-        # set the API key once at startup
-        stripe.api_key = settings.STRIPE_SECRET_KEY
+        # Set the Stripe API key once at startup (only if provided)
+        # This is safe - no DB queries, no user creation, just configuration
+        if settings.STRIPE_SECRET_KEY:
+            stripe.api_key = settings.STRIPE_SECRET_KEY

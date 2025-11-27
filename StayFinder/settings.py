@@ -18,11 +18,9 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "fallback-secret")
 
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = [
-    "stayfinderbackend.onrender.com",
-    "localhost",
-    "127.0.0.1",
-]
+# ALLOWED_HOSTS from environment variable (comma-separated)
+ALLOWED_HOSTS_STR = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1")
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(",") if host.strip()]
 
 # ---------------------------
 # INSTALLED APPS
@@ -57,6 +55,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # Static files serving for production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -106,10 +105,13 @@ if DEBUG:
         }
     }
 else:
-    # Production (Render)
+    # Production (Render) - DATABASE_URL must be set in environment
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL environment variable is required in production")
     DATABASES = {
         'default': dj_database_url.parse(
-            os.environ.get("DATABASE_URL"),
+            database_url,
             conn_max_age=600,
             ssl_require=True
         )
@@ -145,6 +147,9 @@ else:
     STATICFILES_DIRS = []  # avoids deployment errors
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise configuration for static files
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
@@ -186,3 +191,5 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+
