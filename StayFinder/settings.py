@@ -194,3 +194,27 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 
+# TEMP logging to capture errors in Render logs — remove after debugging
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+        "": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+    },
+}
+
