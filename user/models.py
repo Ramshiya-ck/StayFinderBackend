@@ -1,11 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-
 from user.manager import UserManager
 
 class User(AbstractUser):
     username = None
-    email = models.EmailField(unique=True, max_length=256, error_messages={'unique':'email already exist'})
+    email = models.EmailField(unique=True, max_length=256)
+
     is_customer = models.BooleanField(default=False)
     is_manager = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
@@ -21,20 +21,5 @@ class User(AbstractUser):
         verbose_name_plural = 'Users'
         ordering = ['-id']
 
-        def __str__(self):
-            return self.email
-        
-
-        
-
-            
-    
-
-
-
-
-
-
-
-
-
+    def __str__(self):
+        return self.email

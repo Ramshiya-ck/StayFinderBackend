@@ -111,61 +111,105 @@ def booking_create(request):
     room_id = request.data.get("room")
     check_in = request.data.get("check_in")
     check_out = request.data.get("check_out")
-    guests = request.data.get("guest")
-    address = request.data.get("address")
-    phone = request.data.get("phone")
-    total_amount = request.data.get("total_amount")
-    advance_amount = request.data.get("advance_amount")
-    balance_amount = request.data.get("balance_amount")
+
+    logger.info(f"Booking create attempt - User: {customer.email}, Hotel: {hotel_id}, Room: {room_id}, Check-in: {check_in}, Check-out: {check_out}")
 
     # 🛑 Validation: missing required fields
     if not hotel_id or not room_id or not check_in or not check_out:
+        logger.warning(f"Missing required fields - hotel: {hotel_id}, room: {room_id}, check_in: {check_in}, check_out: {check_out}")
         return Response({
             "status_code": 6001,
             "message": "Hotel, Room, Check-in, and Check-out are required"
-        })
+        }, status=400)
 
-    # 🛑 Validation: check if room is already booked in date range
+    # 🛑 Validation: check-out must be after check-in
+    from datetime import datetime
+    
+    def parse_date(date_str):
+        """Parse multiple date formats: DD/MM/YYYY, DD-MM-YYYY, DD-MM-YY, YYYY-MM-DD"""
+        formats = [
+            "%d/%m/%Y",   # 30/12/2025
+            "%d-%m-%Y",   # 30-12-2025
+            "%d-%m-%y",   # 30-12-25
+            "%d/%m/%y",   # 30/12/25
+            "%Y-%m-%d",   # 2025-12-30
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except ValueError:
+                continue
+        return None
+    
+    try:
+        check_in_date = parse_date(check_in)
+        check_out_date = parse_date(check_out)
+        
+        if not check_in_date or not check_out_date:
+            raise ValueError("Unable to parse dates")
+    except (ValueError, AttributeError) as e:
+        logger.error(f"Date parsing error: {e}")
+        return Response({
+            "status_code": 6001,
+            "message": "Invalid date format. Supported: DD/MM/YYYY, DD-MM-YYYY, DD-MM-YY, YYYY-MM-DD"
+        }, status=400)
+
+    if check_out_date <= check_in_date:
+        logger.warning(f"Invalid dates - Check-out ({check_out_date}) must be after check-in ({check_in_date})")
+        return Response({
+            "status_code": 6001,
+            "message": "Check-out date must be after check-in date"
+        }, status=400)
+    
+    # Calculate number of nights
+    number_of_nights = (check_out_date - check_in_date).days
+    logger.info(f"Booking duration: {number_of_nights} nights")
+
+    # 🛑 Validation: check if room is already booked in overlapping date range
+    # Two bookings overlap if:
+    # - Booking A starts before Booking B ends AND
+    # - Booking A ends after Booking B starts
     overlapping = Booking.objects.filter(
         hotel_id=hotel_id,
         room_id=room_id,
         booking_status__in=["pending", "confirmed"],  # only active bookings
-        check_in__lt=check_out,
-        check_out__gt=check_in,
-        guests = guests,
-        address = address,
-        phone = phone,
-        total_amount = total_amount,
-        advance_amount = advance_amount,
-        balance_amount = balance_amount,
-        
-
+    ).filter(
+        check_in__lt=check_out_date,  # existing booking starts before new checkout
+        check_out__gt=check_in_date,  # existing booking ends after new checkin
     )
 
     if overlapping.exists():
+        logger.warning(f"Room {room_id} already booked for {check_in_date} to {check_out_date}. Found {overlapping.count()} overlapping bookings")
         return Response({
             "status_code": 6002,
-            "message": "This room is already booked for the selected dates"
-        })
+            "message": "This room is already booked for the selected dates",
+            "overlapping_bookings": overlapping.count()
+        }, status=400)
 
     # ✅ Create booking
     data = request.data.copy()
     data["customer"] = customer.id
+    # Normalize dates to YYYY-MM-DD format for serializer
+    data["check_in"] = check_in_date.strftime("%Y-%m-%d")
+    data["check_out"] = check_out_date.strftime("%Y-%m-%d")
+    
     serializer = BookingSerializer(data=data, context={"request": request})
 
     if serializer.is_valid():
-        serializer.save()
+        booking = serializer.save()
+        logger.info(f"Booking created successfully - ID: {booking.id}, Total: {booking.total_amount}, Advance: {booking.advance_amount}, Balance: {booking.balance_amount}")
         return Response({
             "status_code": 6000,
             "message": "Booking created successfully",
-            "data": serializer.data
-        })
+            "data": BookingSerializer(booking, context={"request": request}).data
+        }, status=201)
     
+    logger.error(f"Booking validation failed: {serializer.errors}")
     return Response({
         "status_code": 6003,
         "message": "Validation failed",
         "errors": serializer.errors
-    })
+    }, status=400)
 
     
 @api_view(['PUT', 'PATCH'])
@@ -181,26 +225,95 @@ def booking_update(request, booking_id):
             "status_code": 6001,
             "message": f"No booking found with ID {booking_id} for this user",
             "data": {}
-        })
+        }, status=404)
 
     booking = bookings.first()
+    
+    # 🛑 Validate dates if being updated
+    from datetime import datetime
+    
+    def parse_date(date_str):
+        """Parse multiple date formats: DD/MM/YYYY, DD-MM-YYYY, DD-MM-YY, YYYY-MM-DD"""
+        formats = [
+            "%d/%m/%Y",   # 30/12/2025
+            "%d-%m-%Y",   # 30-12-2025
+            "%d-%m-%y",   # 30-12-25
+            "%d/%m/%y",   # 30/12/25
+            "%Y-%m-%d",   # 2025-12-30
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except ValueError:
+                continue
+        return None
+    
+    check_in = request.data.get("check_in")
+    check_out = request.data.get("check_out")
+    
+    if check_in or check_out:
+        # Use existing dates if not provided
+        if not check_in:
+            check_in_date = booking.check_in
+        else:
+            check_in_date = parse_date(check_in)
+            if not check_in_date:
+                return Response({
+                    "status_code": 6001,
+                    "message": "Invalid check-in date format. Supported: DD/MM/YYYY, DD-MM-YYYY, DD-MM-YY, YYYY-MM-DD"
+                }, status=400)
+        
+        if not check_out:
+            check_out_date = booking.check_out
+        else:
+            check_out_date = parse_date(check_out)
+            if not check_out_date:
+                return Response({
+                    "status_code": 6001,
+                    "message": "Invalid check-out date format. Supported: DD/MM/YYYY, DD-MM-YYYY, DD-MM-YY, YYYY-MM-DD"
+                }, status=400)
+        
+        # Validate check-out is after check-in
+        if check_out_date <= check_in_date:
+            return Response({
+                "status_code": 6001,
+                "message": "Check-out date must be after check-in date"
+            }, status=400)
+        
+        # Normalize dates
+        data = request.data.copy()
+        if check_in:
+            data["check_in"] = check_in_date.strftime("%Y-%m-%d")
+        if check_out:
+            data["check_out"] = check_out_date.strftime("%Y-%m-%d")
+    else:
+        data = request.data
+    
     serializer = BookingSerializer(
-        booking, data=request.data, partial=True, context={"request": request}
+        booking, data=data, partial=True, context={"request": request}
     )
 
     if serializer.is_valid():
+        # Save the booking (this will trigger the model's save() method and recalculate amounts)
         updated_booking = serializer.save()
+        
+        # Force recalculation if dates were changed
+        if check_in or check_out:
+            # The save() method already recalculates, but let's ensure it's saved again
+            updated_booking.save()
+            logger.info(f"Booking {booking_id} updated - New duration: {(updated_booking.check_out - updated_booking.check_in).days} nights, Total: {updated_booking.total_amount}")
+        
         return Response({
             "status_code": 6000,
             "message": f"Booking {booking_id} updated successfully",
             "data": BookingSerializer(updated_booking, context={"request": request}).data
-        })
+        }, status=200)
 
     return Response({
         "status_code": 6001,
         "message": "Booking update failed",
-        "data": serializer.errors
-    })
+        "errors": serializer.errors
+    }, status=400)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])

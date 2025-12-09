@@ -120,83 +120,176 @@ def register(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def profile(request):
+    """Get all profiles for the authenticated customer"""
     user = request.user
-    customer = Profile.objects.all()
-    context = {
-        'request':request
-    }
-    serializers = ProfileSerializer(customer,many=True,context=context)
-    response_data = {
-        'status_code' : 6000,
-        'data' : serializers.data,
-        'message' : 'Profile data retrieved successfully'
-    }
-    return Response(response_data)
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def profile_create(request):
-#     user = request.user
-#     customer = Customer.objects.get(user=user)
-
-#     # Use get_or_create for existing profile
-#     profile, created = Profile.objects.get_or_create(customer=customer)
-
-#     serializer = ProfileSerializer(profile, data=request.data, context={'request': request})
     
-#     if serializer.is_valid():
-#         serializer.save(customer=customer)  # Set customer here, not in request.data
-#         return Response({
-#             'status_code': 6000,
-#             'data': serializer.data,
-#             'message': 'Profile created successfully'
-#         })
-#     else:
-#         return Response({
-#             'status_code': 6001,
-#             'error': serializer.errors,
-#             'message': 'Profile creation failed'
-#         })
+    try:
+        customer = Customer.objects.get(user=user)
+        profiles = Profile.objects.filter(customer=customer)
+        
+        context = {'request': request}
+        serializers = ProfileSerializer(profiles, many=True, context=context)
+        
+        return Response({
+            'status_code': 6000,
+            'data': serializers.data,
+            'message': 'Profile data retrieved successfully'
+        }, status=200)
+    except Customer.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Customer not found for this user'
+        }, status=404)
 
-
-@api_view(['PUT'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def profile_update(request,id):
+def profile_create(request):
+    """Create a new profile for the authenticated customer"""
     user = request.user
-    customer = Profile.objects.get(user=id)
-    context = {
-        'request':request   
-    }
-    serializers = ProfileSerializer(customer,context= context,data=request.data,partial=True)
-    if serializers.is_valid():
-        serializers.save()
-        response_data = {
-            'status_code' : 6000,
-            'data' : serializers.data,
-            'message' : 'Profile updated successfully'
-        }
-        return Response(response_data)
-    else:
-        response_data = {
-            'status_code' : 6001,
-            'error' : serializers.errors,
-            'message' : 'Profile updation failed'
-        }
-        return Response(response_data)
+    
+    try:
+        customer = Customer.objects.get(user=user)
+    except Customer.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Customer not found for this user'
+        }, status=404)
+    
+    context = {'request': request}
+    serializer = ProfileSerializer(data=request.data, context=context)
+    
+    if serializer.is_valid():
+        # Check if this should be the default profile
+        is_default = request.data.get('is_default', False)
+        
+        # If no profiles exist, make this the default
+        if not Profile.objects.filter(customer=customer).exists():
+            is_default = True
+        
+        profile = serializer.save(customer=customer, is_default=is_default)
+        
+        return Response({
+            'status_code': 6000,
+            'data': ProfileSerializer(profile, context=context).data,
+            'message': 'Profile created successfully'
+        }, status=201)
+    
+    return Response({
+        'status_code': 6001,
+        'errors': serializer.errors,
+        'message': 'Profile creation failed'
+    }, status=400)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def profile_detail(request, profile_id):
+    """Get a single profile by ID for the authenticated customer"""
+    user = request.user
+    
+    try:
+        customer = Customer.objects.get(user=user)
+        profile = Profile.objects.get(id=profile_id, customer=customer)
+        
+        context = {'request': request}
+        serializer = ProfileSerializer(profile, context=context)
+        
+        return Response({
+            'status_code': 6000,
+            'data': serializer.data,
+            'message': 'Profile retrieved successfully'
+        }, status=200)
+    except Customer.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Customer not found'
+        }, status=404)
+    except Profile.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Profile not found or does not belong to you'
+        }, status=404)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def profile_update(request, profile_id):
+    """Update a profile for the authenticated customer"""
+    user = request.user
+    
+    try:
+        customer = Customer.objects.get(user=user)
+        profile = Profile.objects.get(id=profile_id, customer=customer)
+    except Customer.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Customer not found'
+        }, status=404)
+    except Profile.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Profile not found or does not belong to you'
+        }, status=404)
+    
+    context = {'request': request}
+    partial = request.method == 'PATCH'
+    serializer = ProfileSerializer(profile, data=request.data, context=context, partial=partial)
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response({
+            'status_code': 6000,
+            'data': serializer.data,
+            'message': 'Profile updated successfully'
+        }, status=200)
+    
+    return Response({
+        'status_code': 6001,
+        'errors': serializer.errors,
+        'message': 'Profile update failed'
+    }, status=400)
     
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
-def profile_delete(request,id):
+def profile_delete(request, profile_id):
+    """Delete a profile for the authenticated customer"""
     user = request.user
-    customer = Customer.objects.get(user=id)
-    customer.delete()
-    user.delete()
-    response_data = {
-        'status_code' : 6000,
-        'data' : {},
-        'message' : 'Profile deleted successfully'
-    }
-    return Response(response_data)
+    
+    try:
+        customer = Customer.objects.get(user=user)
+        profile = Profile.objects.get(id=profile_id, customer=customer)
+        
+        # Prevent deletion if it's the only profile
+        profile_count = Profile.objects.filter(customer=customer).count()
+        if profile_count == 1:
+            return Response({
+                'status_code': 6001,
+                'message': 'Cannot delete the only profile. Please create another profile first.'
+            }, status=400)
+        
+        # If deleting default profile, set another as default
+        if profile.is_default:
+            other_profile = Profile.objects.filter(customer=customer).exclude(id=profile_id).first()
+            if other_profile:
+                other_profile.is_default = True
+                other_profile.save()
+        
+        profile.delete()
+        
+        return Response({
+            'status_code': 6000,
+            'message': 'Profile deleted successfully'
+        }, status=200)
+    except Customer.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Customer not found'
+        }, status=404)
+    except Profile.DoesNotExist:
+        return Response({
+            'status_code': 6001,
+            'message': 'Profile not found or does not belong to you'
+        }, status=404)
     
 
 @api_view(['GET'])
